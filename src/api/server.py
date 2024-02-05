@@ -1,7 +1,7 @@
 from fastapi import FastAPI, exceptions
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from src.api import users
+from src.api import users, tasks
 import json
 import logging
 import sys
@@ -27,6 +27,8 @@ app.add_middleware(
 )
 
 app.include_router(users.router)
+app.include_router(tasks.router)
+
 
 @app.exception_handler(exceptions.RequestValidationError)
 @app.exception_handler(ValidationError)
@@ -36,7 +38,6 @@ async def validation_exception_handler(request, exc):
     response = {"message": [], "data": None}
     for error in exc_json:
         response['message'].append(f"{error['loc']}: {error['msg']}")
-
     return JSONResponse(response, status_code=422)
 
 @app.get("/")
