@@ -8,7 +8,7 @@ import sys
 from starlette.middleware.cors import CORSMiddleware
 
 description = """
-Food For Lesser is great
+Get Things Done
 """
 
 app = FastAPI(
