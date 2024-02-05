@@ -9,16 +9,18 @@ router = APIRouter(
     tags=["users"],
     dependencies=[Depends(auth.get_api_key)],
 )
-# email = [A-Za-z]+@email\.com
-@router.post("/add")
-def create_user(username : str, email : str):
-    if not username and not email:
-        return {"result": "EMPTY USERNAME/EMAIL" }
-    calpoly = re.compile('[A-Za-z0-9]+@calpoly\.edu')
-    gmail = re.compile('[A-Za-z0-9]+@gmail\.com')
+ 
+def checkValidEmail(email):
+    regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
+    if(re.fullmatch(regex, email)):
+        return True
+    else:
+        return False
 
-    if calpoly.match(email) is None and gmail.match(email) is None:
-        return {"result": "MUST USE CALPOLY OR GMAIL EMAIL ADDRESS" }
+@router.post("/add")
+def create_user(name : str, email : str):
+    if not checkValidEmail(email):
+        return {"error": "INVALID EMAIL" }
     
     with db.engine.begin() as connection:
         # check if the user already exists
@@ -27,17 +29,20 @@ def create_user(username : str, email : str):
             WITH check_existing AS (
                 SELECT id
                 FROM users
-                WHERE username = :username OR email = :email
+                WHERE email = :email
             )
-            INSERT INTO users (username, email)
-            SELECT :username, :email
+            INSERT INTO users (name, email)
+            SELECT :name, :email
             WHERE NOT EXISTS (SELECT 1 FROM check_existing)
             RETURNING id;
         '''    
         )
-        ,[{'username':username,'email':email}]).scalar()
+        ,[{'name':name, 'email':email}]).fetchone()
 
         if entry is None:
-            return { "result" : "Username or Email already in use" }
+            return { "result" : "Email Already in Use" }
         
-        return { 'user_id' : entry }
+        return  { 
+                    'name' : name,
+                    'email' : email,
+                }

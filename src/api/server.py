@@ -18,11 +18,9 @@ app = FastAPI(
     terms_of_service="http://example.com/terms/",
 )
 
-origins = ["https://potion-exchange.vercel.app"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "OPTIONS"],
     allow_headers=["*"],
