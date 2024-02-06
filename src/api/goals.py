@@ -12,7 +12,6 @@ router = APIRouter(
 )
 
 class search_sort_options(str, Enum):
-    goal_name = "goal_name"
     date_created = "date_created"
     date_completed = "date_completed"
 
@@ -66,8 +65,6 @@ def search_orders(
         complete_options = complete_options.complete
     elif sort_col is search_sort_options.date_created:
         order_by = db.goals.c.date_created
-    elif sort_col is search_sort_options.goal_name:
-        order_by = db.goals.c.goal_name
     else:
         assert False
     
@@ -84,6 +81,7 @@ def search_orders(
         where_conditions.append(db.goals.c.complete == True)
     elif complete_options == complete_options.incomplete:
         where_conditions.append(db.goals.c.complete == False)
+        
 
     with db.engine.connect() as conn:
         stmt = (
