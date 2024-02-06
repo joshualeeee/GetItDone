@@ -100,3 +100,30 @@ def set_task_goal(user_id : int, task_id : int, goal_id : int):
                     'task_name' : entry.task_name,
                     'status' : "complete"
                 }
+
+@router.delete("/delete")
+def delete_task(user_id : int, task_id : int): 
+    """ 
+        Deletes task, returns success JSON
+
+        Returns error if task can't be found
+    """
+    with db.engine.begin() as connection:
+        entry = connection.execute(sqlalchemy.text(
+        '''
+            DELETE FROM tasks
+            WHERE id = :id AND "user" = :user
+            RETURNING task_name;
+        '''    
+        )
+        ,[{'id':task_id, 'user':user_id}]).fetchone()
+
+        if entry is None:
+            return { "error" : "Task Not Found" }
+        
+        return  { 
+                    'user' : user_id,
+                    'task_id' : task_id,
+                    'task_name' : entry.task_name,
+                    'status' : "successfully deleted"
+                }
