@@ -4,14 +4,159 @@ import re
 from fastapi import APIRouter, Depends
 from src.api import auth
 from src import database as db
-from datetime import datetime
-
+from datetime import date
 
 router = APIRouter(
     prefix="/tasks",
     tags=["tasks"],
     dependencies=[Depends(auth.get_api_key)],
 )
+
+@router.post("/add")
+def create_task(
+        user_id : int, 
+        task_name : str, 
+        description : str = None, 
+        goal_id : int = None, 
+        time_taken : int = None,
+        date_completed : date = None,
+    ): 
+    """ 
+        Creates a task, returns task information
+
+        Returns error if task of same name has been created already
+    """
+    if (time_taken and not date_completed) or (not time_taken and date_completed):
+        return {"error" : "Completed tasks require time_taken and date_completed"}
+    
+    complete = False
+    if date_completed:
+        complete = True
+
+    with db.engine.begin() as connection:
+        entry = connection.execute(sqlalchemy.text(
+        '''
+            WITH check_existing AS (
+                SELECT id
+                FROM tasks
+                WHERE "user" = :user and task_name = :task_name and date_completed = :date_completed
+            )
+            INSERT INTO tasks (task_name, description, "user", goal, complete, date_completed, time_taken)
+            SELECT :task_name, :description, :user, :goal_id, :complete, :date_completed, :time_taken
+            WHERE NOT EXISTS (SELECT 1 FROM check_existing)
+            RETURNING id;
+        '''    
+        )
+        ,[{
+            'task_name':task_name, 
+            'user':user_id, 
+            'description':description, 
+            'goal_id':goal_id,
+            'complete':complete,
+            'date_completed':date_completed,
+            'time_taken': time_taken
+            }]).fetchone()
+
+        if entry is None:
+            return { "error" : "Task Already Created" }
+        
+        return  { 
+                    'user' : user_id,
+                    'task_id' : entry[0],
+                    'task_name' : task_name,
+                    'description' : description,
+                    'complete':complete,
+                }
+    
+@router.put("/complete")
+def complete_task(
+    user_id : int, 
+    task_id : int,
+    time_taken : int,
+    date_completed : date = None,
+    ): 
+    """ 
+        Completes a task, returns task information
+
+        Returns error if task can't be found
+    """
+    with db.engine.begin() as connection:
+        entry = connection.execute(sqlalchemy.text(
+        '''
+            UPDATE tasks
+            SET complete = true, time_taken = :time_taken,
+                date_completed = CASE WHEN :date_completed IS NOT NULL THEN :date_completed ELSE now() END
+            WHERE id = :id AND "user" = :user
+            RETURNING task_name;
+        '''    
+        )
+        ,[{'id':task_id, 'user':user_id, 'time_taken':time_taken, 'date_completed': date_completed}]).fetchone()
+
+        if entry is None:
+            return { "error" : "Task Not Found" }
+        
+        return  { 
+                    'user' : user_id,
+                    'task_id' : task_id,
+                    'task_name' : entry.task_name,
+                    'complete': True,
+                }
+
+@router.put("/set/goal")
+def set_task_goal(user_id : int, task_id : int, goal_id : int): 
+    """ 
+        Sets goal of a task, returns task information
+
+        Returns error if task can't be found
+    """
+    with db.engine.begin() as connection:
+        entry = connection.execute(sqlalchemy.text(
+        '''
+            UPDATE tasks
+            SET goal = :goal_id
+            WHERE id = :id AND "user" = :user
+            RETURNING task_name;
+        '''    
+        )
+        ,[{'id':task_id, 'user':user_id, 'goal_id':goal_id}]).fetchone()
+
+        if entry is None:
+            return { "error" : "Task Not Found" }
+        
+        return  { 
+                    'user' : user_id,
+                    'task_id' : task_id,
+                    'task_name' : entry.task_name,
+                    'status' : "complete"
+                }
+
+@router.delete("/delete")
+def delete_task(user_id : int, task_id : int): 
+    """ 
+        Deletes task, returns success JSON
+
+        Returns error if task can't be found
+    """
+    with db.engine.begin() as connection:
+        entry = connection.execute(sqlalchemy.text(
+        '''
+            DELETE FROM tasks
+            WHERE id = :id AND "user" = :user
+            RETURNING task_name;
+        '''    
+        )
+        ,[{'id':task_id, 'user':user_id}]).fetchone()
+
+        if entry is None:
+            return { "error" : "Task Not Found" }
+        
+        return  { 
+                    'user' : user_id,
+                    'task_id' : task_id,
+                    'task_name' : entry.task_name,
+                    'status' : "successfully deleted"
+                }
+
 
 class search_sort_options(str, Enum):
     date_created = "date_created"
@@ -147,147 +292,3 @@ def search_tasks(
                     "res" : res
                 }
 
-@router.post("/add")
-def create_task(
-        user_id : int, 
-        task_name : str, 
-        description : str = None, 
-        goal_id : int = None, 
-        time_taken : int = None,
-        date_completed : datetime = None,
-    ): 
-    """ 
-        Creates a task, returns task information
-
-        Returns error if task of same name has been created already
-    """
-    if (time_taken and not date_completed) or (not time_taken and date_completed):
-        return {"error" : "Completed tasks require time_taken and date_completed"}
-    
-    complete = False
-    if date_completed:
-        complete = True
-
-    with db.engine.begin() as connection:
-        entry = connection.execute(sqlalchemy.text(
-        '''
-            WITH check_existing AS (
-                SELECT id
-                FROM tasks
-                WHERE "user" = :user and task_name = :task_name
-            )
-            INSERT INTO tasks (task_name, description, "user", goal, complete, date_completed, time_taken)
-            SELECT :task_name, :description, :user, :goal_id, :complete, :date_completed, :time_taken
-            WHERE NOT EXISTS (SELECT 1 FROM check_existing)
-            RETURNING id;
-        '''    
-        )
-        ,[{
-            'task_name':task_name, 
-            'user':user_id, 
-            'description':description, 
-            'goal_id':goal_id,
-            'complete':complete,
-            'date_completed':date_completed,
-            'time_taken': time_taken
-            }]).fetchone()
-
-        if entry is None:
-            return { "error" : "Task Already Created" }
-        
-        return  { 
-                    'user' : user_id,
-                    'task_id' : entry[0],
-                    'task_name' : task_name,
-                    'description' : description,
-                    'complete':complete,
-                }
-    
-@router.put("/complete")
-def complete_task(
-    user_id : int, 
-    task_id : int,
-    time_taken : int,
-    date_completed : datetime = None,
-    ): 
-    """ 
-        Completes a task, returns task information
-
-        Returns error if task can't be found
-    """
-    with db.engine.begin() as connection:
-        entry = connection.execute(sqlalchemy.text(
-        '''
-            UPDATE tasks
-            SET complete = true, time_taken = :time_taken,
-                date_completed = CASE WHEN :date_completed IS NOT NULL THEN :date_completed ELSE now() END
-            WHERE id = :id AND "user" = :user
-            RETURNING task_name;
-        '''    
-        )
-        ,[{'id':task_id, 'user':user_id, 'time_taken':time_taken, 'date_completed': date_completed}]).fetchone()
-
-        if entry is None:
-            return { "error" : "Task Not Found" }
-        
-        return  { 
-                    'user' : user_id,
-                    'task_id' : task_id,
-                    'task_name' : entry.task_name,
-                    'complete': True,
-                }
-
-@router.put("/set/goal")
-def set_task_goal(user_id : int, task_id : int, goal_id : int): 
-    """ 
-        Sets goal of a task, returns task information
-
-        Returns error if task can't be found
-    """
-    with db.engine.begin() as connection:
-        entry = connection.execute(sqlalchemy.text(
-        '''
-            UPDATE tasks
-            SET goal = :goal_id
-            WHERE id = :id AND "user" = :user
-            RETURNING task_name;
-        '''    
-        )
-        ,[{'id':task_id, 'user':user_id, 'goal_id':goal_id}]).fetchone()
-
-        if entry is None:
-            return { "error" : "Task Not Found" }
-        
-        return  { 
-                    'user' : user_id,
-                    'task_id' : task_id,
-                    'task_name' : entry.task_name,
-                    'status' : "complete"
-                }
-
-@router.delete("/delete")
-def delete_task(user_id : int, task_id : int): 
-    """ 
-        Deletes task, returns success JSON
-
-        Returns error if task can't be found
-    """
-    with db.engine.begin() as connection:
-        entry = connection.execute(sqlalchemy.text(
-        '''
-            DELETE FROM tasks
-            WHERE id = :id AND "user" = :user
-            RETURNING task_name;
-        '''    
-        )
-        ,[{'id':task_id, 'user':user_id}]).fetchone()
-
-        if entry is None:
-            return { "error" : "Task Not Found" }
-        
-        return  { 
-                    'user' : user_id,
-                    'task_id' : task_id,
-                    'task_name' : entry.task_name,
-                    'status' : "successfully deleted"
-                }
