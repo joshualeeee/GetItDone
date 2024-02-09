@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from src.api import auth
 from src import database as db
 from enum import Enum
+from datetime import datetime
 
 router = APIRouter(
     prefix="/goals",
@@ -105,7 +106,7 @@ class search_sort_order(str, Enum):
 def search_orders(
     user_id : int,
     goal_name: str = "",
-    complete_options: complete_options = complete_options.incomplete,
+    complete_options: complete_options = complete_options.both,
     search_page: int = 0,
     sort_col: search_sort_options = search_sort_options.date_created,
     sort_order: search_sort_order = search_sort_order.desc,
@@ -187,13 +188,14 @@ def search_orders(
         for row in result:
             if i < 5:
                 i += 1
+
+                date_completed = datetime.strftime(row.date_completed, '%Y-%m-%d') if row.date_completed else None
                 res.append(
                     {
                         "goal_id": row.id,
                         "goal_name": row.goal_name,
-                        "date_created": row.date_created,
                         "complete": row.complete,
-                        "date_completed": row.date_completed,
+                        "date_completed": date_completed,
                     }
                 )
         
@@ -262,7 +264,8 @@ def goal_progress(user_id : int, goal_id : int):
         '''
             SELECT
                 g.goal_name,
-                SUM(t.time_taken) AS time_spent,
+                g.complete,
+                SUM(t.time_taken) AS minutes_spent,
                 COUNT(CASE WHEN t.complete THEN 1 ELSE NULL END) AS complete_tasks,
                 COUNT(CASE WHEN NOT t.complete THEN 1 ELSE NULL END) AS incomplete_tasks,
                 CASE
@@ -292,7 +295,8 @@ def goal_progress(user_id : int, goal_id : int):
                     'user_id' : user_id,
                     'goal_id' : goal_id,
                     'goal_name' : entry[0].goal_name,
-                    'time_spent' : entry[0].time_spent,
+                    'complete' : entry[0].complete,
+                    'minutes_spent' : entry[0].minutes_spent,
                     'complete_tasks' : entry[0].complete_tasks,
                     'incomplete_tasks' : entry[0].incomplete_tasks,
                     'percent_complete' : entry[0].percent_complete,
