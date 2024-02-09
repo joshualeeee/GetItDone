@@ -128,7 +128,7 @@ class search_sort_order(str, Enum):
     desc = "desc" 
 
 @router.get("/search/")
-def search_orders(
+def search_goals(
     user_id : int,
     goal_name: str = "",
     complete_options: complete_options = complete_options.both,
