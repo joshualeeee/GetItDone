@@ -1,10 +1,12 @@
+import datetime
 from enum import Enum
 import sqlalchemy
 import re
 from fastapi import APIRouter, Depends
 from src.api import auth
 from src import database as db
-from datetime import date
+from datetime import datetime
+
 
 router = APIRouter(
     prefix="/tasks",
@@ -12,26 +14,47 @@ router = APIRouter(
     dependencies=[Depends(auth.get_api_key)],
 )
 
+def validate_date(date: str):
+    try:
+        date = datetime.strptime(date, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
+
+
 @router.post("/add")
 def create_task(
         user_id : int, 
         task_name : str, 
         description : str = None, 
         goal_id : int = None, 
+        complete : bool = False,
+        date_completed : str = None,
         time_taken : int = None,
-        date_completed : date = None,
     ): 
     """ 
         Creates a task, returns task information
 
+        *Tasks can have identical names but must be on different days
+
+        Parameters:
+        - user_id (int): The ID of the user creating the task.
+        - task_name (str): The name of the task.
+        - description (str, optional): Additional description or details about the task. Defaults to None.
+        - goal_id (int, optional): The ID of the goal associated with the task. Defaults to None.
+
+        - complete (bool) : Defaults to False
+        - date_completed (str, optional (required if complete)): The completion date of the task (format: YYYY-MM-DD). Defaults to None.
+        - time_taken (int, optional (required if complete)): The time taken to complete the task (in minutes). Defaults to None.
+
         Returns error if task of same name has been created already
     """
-    if (time_taken and not date_completed) or (not time_taken and date_completed):
+    
+    if not ((complete and time_taken and date_completed) or (not complete and not time_taken and not date_completed)):
         return {"error" : "Completed tasks require time_taken and date_completed"}
     
-    complete = False
-    if date_completed:
-        complete = True
+    if date_completed and not validate_date(date_completed):
+        return { "error" : "Date_completed invalid must be (YYYY-MM-DD)" }
 
     with db.engine.begin() as connection:
         entry = connection.execute(sqlalchemy.text(
@@ -73,13 +96,21 @@ def complete_task(
     user_id : int, 
     task_id : int,
     time_taken : int,
-    date_completed : date = None,
+    date_completed : str = None,
     ): 
     """ 
         Completes a task, returns task information
 
+        - user_id (int): The ID of the user completing the task.
+        - task_id (int): The ID of the task to be completed.
+        - time_taken (int): The time taken to complete the task (in minutes).
+        - date_completed (date, optional): The completion date of the task (format: YYYY-MM-DD). Defaults to current date
+
         Returns error if task can't be found
     """
+    if date_completed and not validate_date(date_completed):
+        return { "error" : "Date_completed invalid must be (YYYY-MM-DD)" }
+
     with db.engine.begin() as connection:
         entry = connection.execute(sqlalchemy.text(
         '''
@@ -91,6 +122,11 @@ def complete_task(
         '''    
         )
         ,[{'id':task_id, 'user':user_id, 'time_taken':time_taken, 'date_completed': date_completed}]).fetchone()
+
+        if date_completed:
+            date_completed = validate_date(date_completed)
+            if not date_completed:
+                return { "error" : "Date_completed invalid must be (YYYY-MM-DD)" }
 
         if entry is None:
             return { "error" : "Task Not Found" }
@@ -176,7 +212,7 @@ def search_tasks(
     user_id : int,
     task_name: str = "",
     goal_id : int = None,
-    complete_options: complete_options = complete_options.incomplete,
+    complete_options: complete_options = complete_options.both,
     search_page: int = 0,
     sort_col: search_sort_options = search_sort_options.date_created,
     sort_order: search_sort_order = search_sort_order.desc,
@@ -292,3 +328,42 @@ def search_tasks(
                     "res" : res
                 }
 
+@router.get("/count", tags=["analyze"])
+def total_tasks(user_id : int): 
+    """ 
+        Returns the number of completed_tasks,
+        incompleted_tasks, total, and percentages.
+
+    
+        Returns error if user can't be found
+    """
+    with db.engine.begin() as connection:
+        entry = connection.execute(sqlalchemy.text(
+        '''
+            SELECT
+                COUNT(CASE WHEN complete THEN 1 ELSE NULL END) AS complete_tasks,
+                COUNT(CASE WHEN NOT complete THEN 1 ELSE NULL END) AS incomplete_tasks,
+                CASE
+                    WHEN COUNT(*) = 0 THEN NULL
+                    ELSE ROUND(COUNT(CASE WHEN complete THEN 1 ELSE NULL END) * 100.0 / COUNT(*), 2)
+                END AS percent_complete,
+                CASE
+                    WHEN COUNT(*) = 0 THEN NULL
+                    ELSE ROUND(COUNT(CASE WHEN NOT complete THEN 1 ELSE NULL END) * 100.0 / COUNT(*), 2)
+                END AS percent_incomplete
+            FROM tasks
+            WHERE "user" = :user_id;
+        '''    
+        )
+        ,[{'user_id':user_id}]).fetchall()
+
+        if not entry:
+            return { "error" : "No Tasks For User Found" }
+            
+        return  { 
+                    'completed_tasks' : entry[0].complete_tasks,
+                    'incompleted_tasks' : entry[0].incomplete_tasks,
+                    'total' : entry[0].complete_tasks + entry[0].incomplete_tasks,
+                    'percent_complete' : entry[0].percent_complete,
+                    'percent_incomplete' : entry[0].percent_incomplete,
+                }
