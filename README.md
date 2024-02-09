@@ -1,2 +1,3 @@
 # GetItDone
-A web application to help you get things done.
+
+A web service to help you get things done.

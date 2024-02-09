@@ -7,7 +7,6 @@ from src.api import auth
 from src import database as db
 from datetime import datetime
 
-
 router = APIRouter(
     prefix="/tasks",
     tags=["tasks"],
@@ -30,28 +29,33 @@ def create_task(
         goal_id : int = None, 
         complete : bool = False,
         date_completed : str = None,
-        time_taken : int = None,
+        minutes_taken : int = None,
     ): 
     """ 
-        Creates a task, returns task information
+    Creates a task and returns task information.
 
-        *Tasks can have identical names but must be on different days
+    Tasks can have identical names but must be on different days.
+    Completed tasks must inlude date_completed and minutes_taken
 
-        Parameters:
-        - user_id (int): The ID of the user creating the task.
-        - task_name (str): The name of the task.
-        - description (str, optional): Additional description or details about the task. Defaults to None.
-        - goal_id (int, optional): The ID of the goal associated with the task. Defaults to None.
+    Args:
+        user_id (int): The ID of the user creating the task.
+        task_name (str): The name of the task.
+        description (str, optional): Additional description or details about the task. Defaults to None.
+        goal_id (int, optional): The ID of the goal associated with the task. Defaults to None.
+        complete (bool): Indicates whether the task is complete. Defaults to False.
+        date_completed (str, optional): The completion date of the task (format: YYYY-MM-DD). Defaults to None.
+        minutes_taken (int, optional): The time taken to complete the task (in minutes). Defaults to None.
 
-        - complete (bool) : Defaults to False
-        - date_completed (str, optional (required if complete)): The completion date of the task (format: YYYY-MM-DD). Defaults to None.
-        - time_taken (int, optional (required if complete)): The time taken to complete the task (in minutes). Defaults to None.
-
-        Returns error if task of same name has been created already
+    Returns:
+        dict: A dictionary containing the task information or an error message.
     """
     
-    if not ((complete and time_taken and date_completed) or (not complete and not time_taken and not date_completed)):
-        return {"error" : "Completed tasks require time_taken and date_completed"}
+    if complete is True and minutes_taken and date_completed:
+        pass
+    elif complete is False and not minutes_taken and not date_completed:
+        pass
+    else:
+        return {"error" : "Completed tasks require minutes_taken and date_completed"}
     
     if date_completed and not validate_date(date_completed):
         return { "error" : "Date_completed invalid must be (YYYY-MM-DD)" }
@@ -65,7 +69,7 @@ def create_task(
                 WHERE "user" = :user and task_name = :task_name and date_completed = :date_completed
             )
             INSERT INTO tasks (task_name, description, "user", goal, complete, date_completed, time_taken)
-            SELECT :task_name, :description, :user, :goal_id, :complete, :date_completed, :time_taken
+            SELECT :task_name, :description, :user, :goal_id, :complete, :date_completed, :minutes_taken
             WHERE NOT EXISTS (SELECT 1 FROM check_existing)
             RETURNING id;
         '''    
@@ -77,7 +81,7 @@ def create_task(
             'goal_id':goal_id,
             'complete':complete,
             'date_completed':date_completed,
-            'time_taken': time_taken
+            'minutes_taken': minutes_taken
             }]).fetchone()
 
         if entry is None:
@@ -91,22 +95,29 @@ def create_task(
                     'complete':complete,
                 }
     
+
+
+
+
 @router.put("/complete")
 def complete_task(
     user_id : int, 
     task_id : int,
-    time_taken : int,
+    minutes_taken : int,
     date_completed : str = None,
     ): 
     """ 
-        Completes a task, returns task information
+    Completes a task and returns task information.
+    Tasks already complete can be set completed again to update complete_date.
 
-        - user_id (int): The ID of the user completing the task.
-        - task_id (int): The ID of the task to be completed.
-        - time_taken (int): The time taken to complete the task (in minutes).
-        - date_completed (date, optional): The completion date of the task (format: YYYY-MM-DD). Defaults to current date
+    Args:
+        user_id (int): The ID of the user completing the task.
+        task_id (int): The ID of the task to be completed.
+        minutes_taken (int): The time taken to complete the task (in minutes).
+        date_completed (str, optional): The completion date of the task (format: YYYY-MM-DD). Defaults to current date.
 
-        Returns error if task can't be found
+    Returns:
+        dict: A dictionary containing the task information or an error message.
     """
     if date_completed and not validate_date(date_completed):
         return { "error" : "Date_completed invalid must be (YYYY-MM-DD)" }
@@ -115,13 +126,13 @@ def complete_task(
         entry = connection.execute(sqlalchemy.text(
         '''
             UPDATE tasks
-            SET complete = true, time_taken = :time_taken,
+            SET complete = true, time_taken = :minutes_taken,
                 date_completed = CASE WHEN :date_completed IS NOT NULL THEN :date_completed ELSE now() END
             WHERE id = :id AND "user" = :user
             RETURNING task_name;
         '''    
         )
-        ,[{'id':task_id, 'user':user_id, 'time_taken':time_taken, 'date_completed': date_completed}]).fetchone()
+        ,[{'id':task_id, 'user':user_id, 'minutes_taken':minutes_taken, 'date_completed': date_completed}]).fetchone()
 
         if date_completed:
             date_completed = validate_date(date_completed)
@@ -138,12 +149,21 @@ def complete_task(
                     'complete': True,
                 }
 
+
+
+
 @router.put("/set/goal")
 def set_task_goal(user_id : int, task_id : int, goal_id : int): 
     """ 
-        Sets goal of a task, returns task information
+    Sets the goal of a task and returns task information.
 
-        Returns error if task can't be found
+    Args:
+        user_id (int): The ID of the user setting the goal.
+        task_id (int): The ID of the task for which the goal is being set.
+        goal_id (int): The ID of the goal to be set for the task.
+
+    Returns:
+        dict: A dictionary containing the task information or an error message.
     """
     with db.engine.begin() as connection:
         entry = connection.execute(sqlalchemy.text(
@@ -166,12 +186,20 @@ def set_task_goal(user_id : int, task_id : int, goal_id : int):
                     'status' : "complete"
                 }
 
+
+
+
 @router.delete("/delete")
 def delete_task(user_id : int, task_id : int): 
     """ 
-        Deletes task, returns success JSON
+    Deletes a task and returns success JSON.
 
-        Returns error if task can't be found
+    Args:
+        user_id (int): The ID of the user deleting the task.
+        task_id (int): The ID of the task to be deleted.
+
+    Returns:
+        dict: A dictionary containing the result of the deletion operation or an error message.
     """
     with db.engine.begin() as connection:
         entry = connection.execute(sqlalchemy.text(
@@ -192,6 +220,8 @@ def delete_task(user_id : int, task_id : int):
                     'task_name' : entry.task_name,
                     'status' : "successfully deleted"
                 }
+
+
 
 
 class search_sort_options(str, Enum):
@@ -218,28 +248,26 @@ def search_tasks(
     sort_order: search_sort_order = search_sort_order.desc,
 ):
     """
-    Search for tasks by task_name and complete status.
-
-    Task_name used to filter that contain the 
-    string (case insensitive). If the filters aren't provided, no
-    filtering occurs on the respective search term.
+     
+    Search, filter, and sort for tasks by task_name and other factors.
 
     Search page is a cursor for pagination. The response to this
     search endpoint will return next_page >= 1 if there is a
-    previous or next page of results available else it will return 0. 
+    previous or next page of results available else it will return -1. 
     The next_page search response can be passed in the next search 
     request as search page to get that page of results.
 
-    Sort col is which column to sort by and sort order is the direction
-    of the search. They default to searching by date_created of the order
-    in descending order.
+    Args:
+        user_id (int): The ID of the user searching for tasks.
+        task_name (str, optional): The name of the task to search for (case-insensitive). Defaults to "".
+        goal_id (int, optional): The ID of the goal associated with the task. Defaults to None.
+        complete_options (complete_options, optional): Filter tasks by completion status. Defaults to complete_options.both.
+        search_page (int, optional): The page number for pagination. Defaults to 0.
+        sort_col (search_sort_options, optional): The column to sort by. Defaults to search_sort_options.date_created.
+        sort_order (search_sort_order, optional): The sort order. Defaults to search_sort_order.desc.
 
-    The response itself contains a start and end entry that represents 
-    the 0-indexed position of results. Each
-    line item contains the task_id, task_name, description,
-    goal_name, date_created, completion status, date_completed, 
-    time_taken. Results are paginated,  the max results you can return at any 
-    time is 5 total line items.
+    Returns:
+        dict: A dictionary containing the search results or an error message.
     """
 
     if search_page < 0:
@@ -280,6 +308,7 @@ def search_tasks(
                 db.tasks.c.id,
                 db.tasks.c.task_name,
                 db.tasks.c.description,
+                db.tasks.c.goal,
                 db.goals.c.goal_name,
                 db.tasks.c.date_created,
                 db.tasks.c.complete,
@@ -304,16 +333,19 @@ def search_tasks(
         for row in result:
             if i < 5:
                 i += 1
+
+                date_completed = datetime.strftime(row.date_completed, '%Y-%m-%d') if row.date_completed else None
+
                 res.append(
                     {
                         "tasks_id": row.id,
                         "task_name": row.task_name,
                         "description" : row.description,
+                        "goal_id" : row.goal,
                         "goal" : row.goal_name,
-                        "date_created": row.date_created,
                         "complete": row.complete,
-                        "date_completed": row.date_completed,
-                        "time_taken": row.time_taken
+                        "date_completed": date_completed,
+                        "minutes_taken": row.time_taken
                     }
                 )
         
@@ -328,14 +360,18 @@ def search_tasks(
                     "res" : res
                 }
 
+
+
 @router.get("/count", tags=["analyze"])
 def total_tasks(user_id : int): 
     """ 
-        Returns the number of completed_tasks,
-        incompleted_tasks, total, and percentages.
+    Returns the number of completed_tasks, incompleted_tasks, total, and percentages.
 
-    
-        Returns error if user can't be found
+    Args:
+        user_id (int): The ID of the user for which to retrieve task statistics.
+
+    Returns:
+        dict: A dictionary containing task statistics or an error message.
     """
     with db.engine.begin() as connection:
         entry = connection.execute(sqlalchemy.text(
@@ -367,3 +403,51 @@ def total_tasks(user_id : int):
                     'percent_complete' : entry[0].percent_complete,
                     'percent_incomplete' : entry[0].percent_incomplete,
                 }
+
+@router.get("/days", tags=["analyze"])
+def evaluate_days(user_id : int, goal_id : int = None): 
+    """ 
+    Returns the number of completed tasks on every day.
+
+    Args:
+        user_id (int): The ID of the user for which to evaluate task completion by day.
+        goal_id (int, optional): The ID of the goal to filter tasks by. Defaults to None.
+
+    Returns:
+        dict: A dictionary containing the number of completed tasks for each day of the week or an error message.
+    """
+    with db.engine.begin() as connection:
+        query = '''
+            WITH week_dates AS (
+                SELECT
+                    generate_series(date_trunc
+                        ('week', current_date), date_trunc('week', current_date) + interval '6 days', interval '1 day') AS day
+            )
+            SELECT
+                to_char(week_dates.day, 'Day') AS day_of_week,
+                COUNT(t.id) AS tasks_completed
+            FROM
+                week_dates
+            LEFT JOIN
+                tasks AS t ON to_char(t.date_completed, 'Day') = to_char(week_dates.day, 'Day') 
+                    AND t.complete = true 
+                    AND t.user = :user_id
+                    {goal_filter}
+            GROUP BY
+                day_of_week
+            ORDER BY
+                MIN(week_dates.day);
+        '''
+
+        goal_filter = ''
+        if goal_id is not None:
+            goal_filter = 'AND t.goal = :goal_id'
+
+        entry = connection.execute(sqlalchemy.text(query.format(goal_filter=goal_filter)), {'user_id': user_id, 'goal_id': goal_id}).fetchall()
+
+        if not entry:
+            return { "error" : "User not Found" }
+
+        res = {row[0]: row[1] for row in entry}
+            
+        return res

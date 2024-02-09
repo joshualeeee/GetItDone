@@ -32,18 +32,23 @@ def hash_password(password):
 @router.post("/add")
 def create_user(name : str, username : str, password : str):
     """
-    Creates a user and returns the user id, name, and username
+    Creates a user and returns the user id, name, and username.
 
-    Username must be unique
+    Username must be unique.
+    
+    Args:
+        name (str): The name of the user.
+        username (str): The username of the user.
+        password (str): The password of the user.
+        
+    Returns:
+        dict: A dictionary containing the user id, name, and username.
     """
 
     if is_valid_username(username) is False:
         return {  "result" : "Invalid Username : Must only contain only alphanumeric characters and underscores and be 4-20 characters (inclusive)" }
 
-
     hpassword = hash_password(password)
-    
-    
     with db.engine.begin() as connection:
         # check if the user already exists
         entry = connection.execute(sqlalchemy.text(
@@ -77,8 +82,15 @@ def verify_password(password, hashed_password):
 @router.get("/validate")
 def validate_user(username : str, password : str):
     """
-    Validates a username and password, returns the account id
-    """    
+    Validates a username and password, returns the account id.
+    
+    Args:
+        username (str): The username to validate.
+        password (str): The password to validate.
+        
+    Returns:
+        dict: A dictionary containing the user id, name, and username if valid, otherwise a message indicating the failure.
+    """
     with db.engine.begin() as connection:
         # check if the user already exists
         entry = connection.execute(sqlalchemy.text(
@@ -105,8 +117,15 @@ def validate_user(username : str, password : str):
 @router.delete("/delete")
 def delete_user(username : str, password : str):
     """
-    Validates a username and password, deletes if valid
-    """    
+    Validates a username and password, deletes if valid.
+    
+    Args:
+        username (str): The username to validate.
+        password (str): The password to validate.
+        
+    Returns:
+        dict: A dictionary containing the result of the deletion operation.
+    """  
     with db.engine.begin() as connection:
         # check if the user already exists
         entry = connection.execute(sqlalchemy.text(

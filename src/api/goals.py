@@ -14,6 +14,16 @@ router = APIRouter(
 
 @router.post("/add")
 def create_goal(user_id : int, goal_name : str): 
+    """ 
+    Creates a new goal for a user.
+
+    Args:
+        user_id (int): The ID of the user for whom the goal is created.
+        goal_name (str): The name of the goal.
+
+    Returns:
+        dict: A dictionary containing information about the created goal or an error message.
+    """
     with db.engine.begin() as connection:
         entry = connection.execute(sqlalchemy.text(
         '''
@@ -41,6 +51,17 @@ def create_goal(user_id : int, goal_name : str):
     
 @router.put("/complete")
 def complete_goal(user_id : int, goal_id : int): 
+    """ 
+    Marks a goal as complete.
+    Goals already complete can be set completed again to update complete_date.
+
+    Args:
+        user_id (int): The ID of the user who owns the goal.
+        goal_id (int): The ID of the goal to mark as complete.
+
+    Returns:
+        dict: A dictionary containing information about the completed goal or an error message.
+    """
     with db.engine.begin() as connection:
         entry = connection.execute(sqlalchemy.text(
         '''
@@ -66,9 +87,13 @@ def complete_goal(user_id : int, goal_id : int):
 @router.delete("/delete")
 def delete_goal(user_id : int, goal_id : int): 
     """ 
-        Deletes goal, returns success JSON
+    Returns the number of completed and incomplete goals, along with percentages.
 
-        Returns error if task can't be found
+    Args:
+        user_id (int): The ID of the user for which to retrieve goal statistics.
+
+    Returns:
+        dict: A dictionary containing goal statistics or an error message.
     """
     with db.engine.begin() as connection:
         entry = connection.execute(sqlalchemy.text(
@@ -112,27 +137,25 @@ def search_orders(
     sort_order: search_sort_order = search_sort_order.desc,
 ):
     """
-    Search for goals by goal_name and complete status.
-
-    Goal_name used to filter that contain the 
-    string (case insensitive). If the filters aren't provided, no
-    filtering occurs on the respective search term.
+    Searches for goals by name and completion status.
 
     Search page is a cursor for pagination. The response to this
     search endpoint will return next_page >= 1 if there is a
-    previous or next page of results available else it will return 0. 
+    previous or next page of results available else it will return -1. 
     The next_page search response can be passed in the next search 
     request as search page to get that page of results.
 
-    Sort col is which column to sort by and sort order is the direction
-    of the search. They default to searching by date_created of the order
-    in descending order.
 
-    The response itself contains a start and end entry that represents 
-    the 0-indexed position of results. Each
-    line item contains the goal_id, goal_name, date_created, 
-    completeness, and date_completed. Results are paginated, 
-    the max results you can return at any time is 5 total line items.
+    Args:
+        user_id (int): The ID of the user searching for goals.
+        goal_name (str, optional): The name of the goal to search for (case-insensitive). Defaults to "".
+        complete_options (complete_options, optional): Filter goals by completion status. Defaults to complete_options.both.
+        search_page (int, optional): The page number for pagination. Defaults to 0.
+        sort_col (search_sort_options, optional): The column to sort by. Defaults to search_sort_options.date_created.
+        sort_order (search_sort_order, optional): The sort order. Defaults to search_sort_order.desc.
+
+    Returns:
+        dict: A dictionary containing the search results or an error message.
     """
 
     if search_page < 0:
@@ -213,11 +236,14 @@ def search_orders(
 @router.get("/count", tags=["analyze"])
 def total_goals(user_id : int): 
     """ 
-        Returns the number of completed_goals,
-        incompleted_goals, total, and percentages.
+    Returns progress information for a specific goal.
 
-    
-        Returns error if user can't be found
+    Args:
+        user_id (int): The ID of the user who owns the goal.
+        goal_id (int): The ID of the goal to retrieve progress information for.
+
+    Returns:
+        dict: A dictionary containing progress information for the goal or an error message.
     """
     with db.engine.begin() as connection:
         entry = connection.execute(sqlalchemy.text(
