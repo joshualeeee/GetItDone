@@ -207,3 +207,94 @@ def search_orders(
                     "end_entry" : (search_page * 5) + i - 1,
                     "res" : res
                 }
+    
+@router.get("/count", tags=["analyze"])
+def total_goals(user_id : int): 
+    """ 
+        Returns the number of completed_goals,
+        incompleted_goals, total, and percentages.
+
+    
+        Returns error if user can't be found
+    """
+    with db.engine.begin() as connection:
+        entry = connection.execute(sqlalchemy.text(
+        '''
+            SELECT
+                COUNT(CASE WHEN complete THEN 1 ELSE NULL END) AS complete_goals,
+                COUNT(CASE WHEN NOT complete THEN 1 ELSE NULL END) AS incomplete_goals,
+                CASE
+                    WHEN COUNT(*) = 0 THEN NULL
+                    ELSE ROUND(COUNT(CASE WHEN complete THEN 1 ELSE NULL END) * 100.0 / COUNT(*), 2)
+                END AS percent_complete,
+                CASE
+                    WHEN COUNT(*) = 0 THEN NULL
+                    ELSE ROUND(COUNT(CASE WHEN NOT complete THEN 1 ELSE NULL END) * 100.0 / COUNT(*), 2)
+                END AS percent_incomplete
+            FROM goals
+            WHERE "user" = :user_id;
+        '''    
+        )
+        ,[{'user_id':user_id}]).fetchall()
+
+        if not entry:
+            return { "error" : "No Tasks For User Found" }
+            
+        return  { 
+                    'completed_goals' : entry[0].complete_goals,
+                    'incompleted_goals' : entry[0].incomplete_goals,
+                    'total' : entry[0].complete_goals + entry[0].incomplete_goals,
+                    'percent_complete' : entry[0].percent_complete,
+                    'percent_incomplete' : entry[0].percent_incomplete,
+                }
+
+@router.get("/progress", tags=["analyze"])
+def goal_progress(user_id : int, goal_id : int): 
+    """ 
+        Returns the number of completed_goals,
+        incompleted_goals, total, and percentages.
+
+    
+        Returns error if user can't be found
+    """
+    with db.engine.begin() as connection:
+        entry = connection.execute(sqlalchemy.text(
+        '''
+            SELECT
+                g.goal_name,
+                SUM(t.time_taken) AS time_spent,
+                COUNT(CASE WHEN t.complete THEN 1 ELSE NULL END) AS complete_tasks,
+                COUNT(CASE WHEN NOT t.complete THEN 1 ELSE NULL END) AS incomplete_tasks,
+                CASE
+                    WHEN COUNT(*) = 0 THEN NULL
+                    ELSE ROUND(COUNT(CASE WHEN t.complete THEN 1 ELSE NULL END) * 100.0 / COUNT(*), 2)
+                END AS percent_complete,
+                CASE
+                    WHEN COUNT(*) = 0 THEN NULL
+                    ELSE ROUND(COUNT(CASE WHEN NOT t.complete THEN 1 ELSE NULL END) * 100.0 / COUNT(*), 2)
+                END AS percent_incomplete
+            FROM
+                goals as g
+            LEFT JOIN
+                tasks as t ON g.id = t.goal
+            WHERE
+                g.id = :goal_id and g.user = :user_id
+            GROUP BY
+                g.id, g.goal_name;
+        '''    
+        )
+        ,[{'user_id':user_id, "goal_id" : goal_id}]).fetchall()
+
+        if not entry:
+            return { "error" : "goal not found for user" }
+            
+        return  { 
+                    'user_id' : user_id,
+                    'goal_id' : goal_id,
+                    'goal_name' : entry[0].goal_name,
+                    'time_spent' : entry[0].time_spent,
+                    'complete_tasks' : entry[0].complete_tasks,
+                    'incomplete_tasks' : entry[0].incomplete_tasks,
+                    'percent_complete' : entry[0].percent_complete,
+                    'percent_incomplete' : entry[0].percent_incomplete,
+                }
