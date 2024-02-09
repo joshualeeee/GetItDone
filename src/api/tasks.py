@@ -2,7 +2,7 @@ import datetime
 from enum import Enum
 import sqlalchemy
 import re
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from src.api import auth
 from src import database as db
 from datetime import datetime
@@ -55,10 +55,10 @@ def create_task(
     elif complete is False and not minutes_taken and not date_completed:
         pass
     else:
-        return {"error" : "Completed tasks require minutes_taken and date_completed"}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Completed tasks require minutes_taken and date_completed")
     
     if date_completed and not validate_date(date_completed):
-        return { "error" : "Date_completed invalid must be (YYYY-MM-DD)" }
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Date_completed invalid must be (YYYY-MM-DD)")
 
     with db.engine.begin() as connection:
         entry = connection.execute(sqlalchemy.text(
@@ -85,7 +85,7 @@ def create_task(
             }]).fetchone()
 
         if entry is None:
-            return { "error" : "Task Already Created" }
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task Already Created")
         
         return  { 
                     'user' : user_id,
@@ -95,9 +95,6 @@ def create_task(
                     'complete':complete,
                 }
     
-
-
-
 
 @router.put("/complete")
 def complete_task(
@@ -120,7 +117,7 @@ def complete_task(
         dict: A dictionary containing the task information or an error message.
     """
     if date_completed and not validate_date(date_completed):
-        return { "error" : "Date_completed invalid must be (YYYY-MM-DD)" }
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Date_completed invalid must be (YYYY-MM-DD)")
 
     with db.engine.begin() as connection:
         entry = connection.execute(sqlalchemy.text(
@@ -134,13 +131,8 @@ def complete_task(
         )
         ,[{'id':task_id, 'user':user_id, 'minutes_taken':minutes_taken, 'date_completed': date_completed}]).fetchone()
 
-        if date_completed:
-            date_completed = validate_date(date_completed)
-            if not date_completed:
-                return { "error" : "Date_completed invalid must be (YYYY-MM-DD)" }
-
         if entry is None:
-            return { "error" : "Task Not Found" }
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task Not Found")
         
         return  { 
                     'user' : user_id,
@@ -148,8 +140,6 @@ def complete_task(
                     'task_name' : entry.task_name,
                     'complete': True,
                 }
-
-
 
 
 @router.put("/set/goal")
@@ -177,7 +167,7 @@ def set_task_goal(user_id : int, task_id : int, goal_id : int):
         ,[{'id':task_id, 'user':user_id, 'goal_id':goal_id}]).fetchone()
 
         if entry is None:
-            return { "error" : "Task Not Found" }
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task Not Found")
         
         return  { 
                     'user' : user_id,
@@ -212,7 +202,7 @@ def delete_task(user_id : int, task_id : int):
         ,[{'id':task_id, 'user':user_id}]).fetchone()
 
         if entry is None:
-            return { "error" : "Task Not Found" }
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task Not Found")
         
         return  { 
                     'user' : user_id,
@@ -271,7 +261,7 @@ def search_tasks(
     """
 
     if search_page < 0:
-        return {"error" : "page out of bounds"}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Page out of bounds")
 
     if sort_col is search_sort_options.date_completed:
         order_by = db.goals.c.date_completed
@@ -279,7 +269,7 @@ def search_tasks(
     elif sort_col is search_sort_options.date_created:
         order_by = db.goals.c.date_created
     else:
-        assert False
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid sort column")
     
     if sort_order == search_sort_order.desc:
         order_by = sqlalchemy.desc(order_by)
@@ -350,7 +340,7 @@ def search_tasks(
                 )
         
         if i == 0 and search_page > 0:
-                return {"error" : "page out of bounds"}
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Page out of bounds")
 
         return  {
                     "user_id" : user_id,
@@ -394,7 +384,7 @@ def total_tasks(user_id : int):
         ,[{'user_id':user_id}]).fetchall()
 
         if not entry:
-            return { "error" : "No Tasks For User Found" }
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No Tasks Found for User")
             
         return  { 
                     'completed_tasks' : entry[0].complete_tasks,
@@ -446,7 +436,7 @@ def evaluate_days(user_id : int, goal_id : int = None):
         entry = connection.execute(sqlalchemy.text(query.format(goal_filter=goal_filter)), {'user_id': user_id, 'goal_id': goal_id}).fetchall()
 
         if not entry:
-            return { "error" : "User not Found" }
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No Tasks Found for User")
 
         res = {row[0]: row[1] for row in entry}
             

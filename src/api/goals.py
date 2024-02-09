@@ -1,6 +1,6 @@
 import sqlalchemy
 import re
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from src.api import auth
 from src import database as db
 from enum import Enum
@@ -41,7 +41,7 @@ def create_goal(user_id : int, goal_name : str):
         ,[{'goal_name':goal_name, 'user':user_id}]).fetchone()
 
         if entry is None:
-            return { "result" : "Task Already Created" }
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Task Already Created")
         
         return  { 
                     'user' : user_id,
@@ -75,7 +75,7 @@ def complete_goal(user_id : int, goal_id : int):
         ,[{'id':goal_id, 'user':user_id}]).fetchone()
 
         if entry is None:
-            return { "result" : "Goal Not Found" }
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal Not Found")
         
         return  { 
                     'user' : user_id,
@@ -106,7 +106,7 @@ def delete_goal(user_id : int, goal_id : int):
         ,[{'id':goal_id, 'user':user_id}]).fetchone()
 
         if entry is None:
-            return { "error" : "Task Not Found" }
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal Not Found")
         
         return  { 
                     'user' : user_id,
@@ -159,7 +159,7 @@ def search_orders(
     """
 
     if search_page < 0:
-        return {"error" : "page out of bounds"}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Page out of bounds")
 
     if sort_col is search_sort_options.date_completed:
         order_by = db.goals.c.date_completed
@@ -167,7 +167,7 @@ def search_orders(
     elif sort_col is search_sort_options.date_created:
         order_by = db.goals.c.date_created
     else:
-        assert False
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid sort column")
     
     if sort_order == search_sort_order.desc:
         order_by = sqlalchemy.desc(order_by)
@@ -223,7 +223,7 @@ def search_orders(
                 )
         
         if i == 0 and search_page > 0:
-                return {"error" : "page out of bounds"}
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Page out of bounds")
 
         return  {
                     "user_id" : user_id,
@@ -266,7 +266,7 @@ def total_goals(user_id : int):
         ,[{'user_id':user_id}]).fetchall()
 
         if not entry:
-            return { "error" : "No Tasks For User Found" }
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No Tasks For User Found")
             
         return  { 
                     'completed_goals' : entry[0].complete_goals,
@@ -315,7 +315,7 @@ def goal_progress(user_id : int, goal_id : int):
         ,[{'user_id':user_id, "goal_id" : goal_id}]).fetchall()
 
         if not entry:
-            return { "error" : "goal not found for user" }
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal Not Found For User")
             
         return  { 
                     'user_id' : user_id,

@@ -1,6 +1,6 @@
 import sqlalchemy
 import re
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from src.api import auth
 from src import database as db
 import bcrypt
@@ -46,7 +46,7 @@ def create_user(name : str, username : str, password : str):
     """
 
     if is_valid_username(username) is False:
-        return {  "result" : "Invalid Username : Must only contain only alphanumeric characters and underscores and be 4-20 characters (inclusive)" }
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Username : Must only contain only alphanumeric characters and underscores and be 4-20 characters (inclusive)")
 
     hpassword = hash_password(password)
     with db.engine.begin() as connection:
@@ -67,7 +67,7 @@ def create_user(name : str, username : str, password : str):
         ,[{'name':name, 'username':username, 'password':hpassword}]).fetchone()
 
         if entry is None:
-            return { "result" : "Username Taken" }
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username Taken")
         
         return  { 
                     'id' : entry.id,
@@ -103,10 +103,10 @@ def validate_user(username : str, password : str):
         ,[{'username':username}]).fetchone()
 
         if not entry:
-            return { "result" : "User not Found" }
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not Found")
 
         if verify_password(password, bytes(entry.password)) is False:
-            return { "result" : "Invalid Password" }
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Password")
         
         return  { 
                     'id' : entry.id,
@@ -138,10 +138,10 @@ def delete_user(username : str, password : str):
         ,[{'username':username}]).fetchone()
 
         if not entry:
-            return { "result" : "User not Found" }
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not Found")
 
         if verify_password(password, bytes(entry.password)) is False:
-            return { "result" : "Invalid Password" }
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Password")
         
         connection.execute(sqlalchemy.text(
         '''
